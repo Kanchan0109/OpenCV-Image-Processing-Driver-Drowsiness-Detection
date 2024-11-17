@@ -1,0 +1,79 @@
+import cv2
+import numpy as np
+from tensorflow.keras.models import load_model
+from pygame import mixer
+
+mixer.init()
+sound = mixer.Sound(r'C:\Users\KANCHAN\OneDrive\Desktop\Kanchan\Projects\OpenCV Image Processing\alarm.wav')# Initialize the cascades and model
+face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+eye_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_eye.xml')
+model = load_model(r'C:\Users\KANCHAN\OneDrive\Desktop\Kanchan\Projects\OpenCV Image Processing\model.keras')  # Provide the correct path to your model file
+
+# Capture video from webcam
+cap = cv2.VideoCapture(0)  # 0 for default camera, you can change index if you have multiple cameras
+score = 0
+# Check if the camera is opened successfully
+if not cap.isOpened():
+    print("Error: Could not open the camera.")
+    exit()
+
+while True:
+    ret, frame = cap.read()
+    height,width = frame.shape[0:2]
+
+    if not ret or frame is None:
+        print("Error: Failed to capture frame.")
+        break
+    print(frame.shape)
+    # Convert the frame to grayscale for face and eye detection
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    
+    # Detect faces in the frame
+    faces = face_cascade.detectMultiScale(gray, scaleFactor=1.2, minNeighbors=3)
+    
+    # Detect eyes in the faces
+    for (x, y, w, h) in faces:
+        cv2.rectangle(frame, (x, y), (x + w, y + h), (255, 0, 0), 3)
+        face_roi_gray = gray[y:y+h, x:x+w]
+        face_roi_color = frame[y:y+h, x:x+w]
+
+        eyes = eye_cascade.detectMultiScale(face_roi_gray, scaleFactor=1.1, minNeighbors=1)
+        cv2.rectangle(frame, (0,height-50),(200,height),(0,0,0), thickness = cv2.FILLED)
+        for (ex, ey, ew, eh) in eyes:
+          #  cv2.rectangle(face_roi_color, (ex, ey), (ex + ew, ey + eh), (0, 255, 0), 3)
+
+            # Preprocessing steps for the eye region
+            eye = face_roi_color[ey:ey + eh, ex:ex + ew]
+            eye = cv2.resize(eye, (80, 80))
+            eye = eye / 255.0
+            eye = eye.reshape(80, 80, 3)
+            eye = np.expand_dims(eye, axis=0)
+
+            # Predict with the model
+            prediction = model.predict(eye)
+            if prediction[0][0] >0.20:
+                cv2.putText(frame, 'closed', (10, height-20), cv2.FONT_HERSHEY_COMPLEX_SMALL, 1, (255, 255, 255), thickness=1,lineType=cv2.LINE_AA)
+                cv2.putText(frame, 'score'+str(score), (100, height-20), cv2.FONT_HERSHEY_COMPLEX_SMALL, 1, (255, 255, 255), thickness=1,lineType=cv2.LINE_AA)
+                score = score+1
+                if(score>15):
+                    try:
+                        sound.play()
+                    except:
+                        pass 
+                        
+            elif prediction[0][1] >0.80:
+               cv2.putText(frame, 'open', (10, height-20), cv2.FONT_HERSHEY_COMPLEX_SMALL, 1, (255, 255, 255), thickness=1,lineType=cv2.LINE_AA)
+               cv2.putText(frame, 'score'+str(score), (100, height-20), cv2.FONT_HERSHEY_COMPLEX_SMALL, 1, (255, 255, 255), thickness=1,lineType=cv2.LINE_AA)
+               score = score-1
+               if score<0:
+                   score = 0
+    # Display the frame with face and eye detection rectangles
+    cv2.imshow('frame', frame)
+
+    # Press 'q' to exit the loop
+    if cv2.waitKey(33) & 0xFF == ord('q'):
+        break
+
+# Release the capture and close all OpenCV windows
+cap.release()
+cv2.destroyAllWindows()
